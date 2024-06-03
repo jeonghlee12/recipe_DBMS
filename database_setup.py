@@ -10,6 +10,7 @@ def establish_connection():
     )
     return conn
 
+
 def create_db():
     conn = establish_connection()
     cursor = conn.cursor()
@@ -19,6 +20,137 @@ def create_db():
 
 
     # Create schema and table
+    create_table_sql ='''CREATE SCHEMA recipe;
+
+    CREATE TABLE recipe.Users
+    (
+        userID SERIAL PRIMARY KEY,
+        username VARCHAR(50) NOT NULL UNIQUE,
+        email VARCHAR(100) NOT NULL UNIQUE,
+        password_hash VARCHAR(255) NOT NULL,
+        firstname VARCHAR(50),
+        lastname VARCHAR(50),
+        role VARCHAR(20) DEFAULT 'user',
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE recipe.Recipes
+    (
+        recipeID SERIAL PRIMARY KEY,
+        title VARCHAR(100),
+        type VARCHAR(50),
+        description TEXT,
+        instructions TEXT,
+        calory INTEGER,
+        creatorID INTEGER NOT NULL,
+        lastUpdatorID INTEGER,
+        avgRating DECIMAL,
+        isBeingEdited BOOL DEFAULT FALSE,
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (creatorID) REFERENCES recipe.Users(userID),
+        FOREIGN KEY (lastUpdatorID) REFERENCES recipe.Users(userID)
+    );
+
+    CREATE TABLE recipe.Ingredients
+    (
+        ingredientID SERIAL PRIMARY KEY,
+        ingredientName VARCHAR(50) NOT NULL,
+        calory INTEGER
+    );
+
+    CREATE TABLE recipe.Recipe_Ingredients
+    (
+        recipeID INTEGER NOT NULL,
+        ingredientID INTEGER NOT NULL,
+        quantity INTEGER,
+        PRIMARY KEY (recipeID, ingredientID),
+        FOREIGN KEY (recipeID) REFERENCES recipe.Recipes(recipeID),
+        FOREIGN KEY (ingredientID) REFERENCES recipe.Ingredients(ingredientID)
+    );
+
+    CREATE TABLE recipe.RecipeEditQueue
+    (
+        editID SERIAL PRIMARY KEY,
+        recipeID INTEGER NOT NULL,
+        editorID INTEGER NOT NULL,
+        editTimestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        oldDescription TEXT,
+        newDescription TEXT,
+        oldInstruction TEXT,
+        newInstruction TEXT,
+        isApproved BOOL,
+        FOREIGN KEY (editorID) REFERENCES recipe.Users(userID),
+        FOREIGN KEY (recipeID) REFERENCES recipe.Recipes(recipeID)
+    );
+
+    CREATE TABLE recipe.IngredientEditQueue
+    (
+        editID INTEGER NOT NULL,
+        recipeID INTEGER NOT NULL,
+        ingredientID INTEGER NOT NULL,
+        newQuantity INTEGER NOT NULL,
+        newIngredientName VARCHAR(50),
+        newCalory INTEGER,
+        PRIMARY KEY (editID, recipeID, ingredientID),
+        FOREIGN KEY (editID) REFERENCES recipe.RecipeEditQueue(editID),
+        FOREIGN KEY (recipeID) REFERENCES recipe.Recipes(recipeID),
+        FOREIGN KEY (ingredientID) REFERENCES recipe.Ingredients(ingredientID)
+    );
+
+    CREATE TABLE recipe.Bookmark
+    (
+        bookmarkID SERIAL PRIMARY KEY,
+        userID INTEGER NOT NULL,
+        recipeID INTEGER NOT NULL,
+        FOREIGN KEY (userID) REFERENCES recipe.Users(userID),
+        FOREIGN KEY (recipeID) REFERENCES recipe.Recipes(recipeID)
+    );
+
+    CREATE TABLE recipe.Rating
+    (
+        ratingID SERIAL PRIMARY KEY,
+        userID INTEGER NOT NULL,
+        recipeID INTEGER NOT NULL,
+        rating INTEGER NOT NULL,
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (userID) REFERENCES recipe.Users(userID),
+        FOREIGN KEY (recipeID) REFERENCES recipe.Recipes(recipeID)
+    );
+    '''
+    cursor.execute(create_table_sql)
+
+    # Create triggers for updating timestamp
+    triggers_sql = """CREATE OR REPLACE FUNCTION upd_timestamp() RETURNS TRIGGER
+    LANGUAGE plpgsql
+    AS
+    $$
+    BEGIN
+        IF (NEW != OLD) THEN
+            NEW.updatedAt = CURRENT_TIMESTAMP;
+            RETURN NEW;
+        END IF;
+        RETURN OLD;
+    END;
+    $$;
+
+    CREATE TRIGGER update_user BEFORE UPDATE ON recipe.Users
+        FOR EACH ROW EXECUTE FUNCTION upd_timestamp();
+
+    CREATE TRIGGER update_recipes BEFORE UPDATE ON recipe.Recipes
+        FOR EACH ROW EXECUTE FUNCTION upd_timestamp();  
+    """
+    cursor.execute(triggers_sql)
+
+    conn.commit()
+    conn.close()
+
+def initialize_db():
+    conn = establish_connection()
+    cursor = conn.cursor()
+
+    # Fill tables
     with open('setup_queries.md', 'r') as file:
         queries = file.read()
 
@@ -32,6 +164,6 @@ def create_db():
         conn.commit()
         cursor.close()
         conn.close()
-        print("Database setup completed successfully.")
+
     except Exception as e:
         print(f"An error occurred: {e}")
