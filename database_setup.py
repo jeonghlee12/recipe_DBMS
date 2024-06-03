@@ -1,28 +1,55 @@
 import psycopg2
+from transformers import AutoTokenizer, AutoModel
+import torch
+
+# load sentence to token tokenizer model from transformers package
+tokenizer = AutoTokenizer.from_pretrained('sentence-transformers/all-MiniLM-L12-v2')
+model = AutoModel.from_pretrained('sentence-transformers/all-MiniLM-L12-v2')
+
+def encode_text(text: str) -> list:
+    inputs = tokenizer(text, return_tensors='pt', padding=True, truncation=True)
+    with torch.no_grad():
+        outputs = model(**inputs)
+    return outputs.last_hidden_state.mean(dim=1).numpy().flatten().tolist()
+
 
 def establish_connection():
-    conn = psycopg2.connect(
-        database="postgres",
-        user='postgres',
-        password='postgres',
-        host='localhost',
-        port= '5432'
-    )
-    return conn
+    try:
+        conn = psycopg2.connect(
+            database="postgres",
+            user='postgres',
+            password='postgres',
+            host='localhost',
+            port='5432'
+        )
+        return conn
+    except psycopg2.Error as e:
+        print(f"Error establishing connection to database: {e}")
+        return None
 
 
-def create_db():
+def create_db() -> None:
     conn = establish_connection()
+
+    if conn is None:
+        print("No connection to PostgreSQL!")
+        return
+
     cursor = conn.cursor()
 
     # Drop recipe schema if already exists.
     cursor.execute("DROP SCHEMA IF EXISTS recipe CASCADE")
 
+    # Create schema
+    create_schema_sql = "CREATE SCHEMA recipe;"
+    cursor.execute(create_schema_sql)
 
-    # Create schema and table
-    create_table_sql ='''CREATE SCHEMA recipe;
-
-    CREATE TABLE recipe.Users
+    # Check if pgvector extension exists in PostgreSQL
+    check_pgvector_sql = "CREATE EXTENSION IF NOT EXISTS vector;"
+    cursor.execute(check_pgvector_sql)
+    
+    # Create tables
+    create_table_sql ='''CREATE TABLE recipe.Users
     (
         userID SERIAL PRIMARY KEY,
         username VARCHAR(50) NOT NULL UNIQUE,
@@ -38,10 +65,13 @@ def create_db():
     CREATE TABLE recipe.Recipes
     (
         recipeID SERIAL PRIMARY KEY,
-        title VARCHAR(100),
+        title VARCHAR(50),
+        title_vector vector(384),
         type VARCHAR(50),
         description TEXT,
         instructions TEXT,
+        description_vector vector(384),
+        instructions_vector vector(384),
         calory INTEGER,
         creatorID INTEGER NOT NULL,
         lastUpdatorID INTEGER,
@@ -148,9 +178,6 @@ def create_db():
     conn.close()
 
 def initialize_db():
-    conn = establish_connection()
-    cursor = conn.cursor()
-
     # Fill tables
     with open('setup_queries.md', 'r') as file:
         queries = file.read()
@@ -158,6 +185,11 @@ def initialize_db():
     queries = queries.split(';')
     queries = [q.strip() for q in queries if q.strip()]
 
+    conn = establish_connection()
+    if conn is None:
+        print("No connection to PostgreSQL!")
+        return
+    
     try:
         cursor = conn.cursor()
         for query in queries:

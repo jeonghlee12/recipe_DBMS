@@ -19,11 +19,18 @@ def add_user(firstname: str, lastname: str, email: str, username: str, password:
     hashed_password = hashed_password.decode('utf-8')
 
     ### add user to db
+    conn = establish_connection()
+    if conn is None:
+        print("No connection to PostgreSQL!")
+        return
+    
     try:
-        conn = establish_connection()
         cursor = conn.cursor()
 
-        cursor.execute(f"INSERT INTO recipe.Users (username, email, password_hash, firstname, lastname) VALUES ('{username}', '{email}', '{hashed_password}', '{firstname}', '{lastname}')")
+        if role:
+            cursor.execute(f"INSERT INTO recipe.Users (username, email, password_hash, firstname, lastname, role) VALUES ('{username}', '{email}', '{hashed_password}', '{firstname}', '{lastname}', '{role}')")
+        else:
+            cursor.execute(f"INSERT INTO recipe.Users (username, email, password_hash, firstname, lastname) VALUES ('{username}', '{email}', '{hashed_password}', '{firstname}', '{lastname}')")
 
         conn.commit()
         cursor.close()
@@ -32,16 +39,20 @@ def add_user(firstname: str, lastname: str, email: str, username: str, password:
     except psycopg2.errors.UniqueViolation as uv:
         print(f"User {firstname} {lastname} with username '{username}' and email '{email}' already exists!\n")
 
-    except Exception as e:
+    except psycopg2.Error as e:
         print(f"An error occurred: {e}")
 
 def authenticate_user(username_or_email: str, password: str) -> User:
+    conn = establish_connection()
+    if conn is None:
+        print("No connection to PostgreSQL!")
+        return
+    
     try:
-        conn = establish_connection()
         cursor = conn.cursor()
 
         # find user
-        cursor.execute(f"SELECT username, email, password_hash, firstname, lastname, role FROM recipe.Users WHERE username = {username_or_email} OR email = {username_or_email}")
+        cursor.execute(f"SELECT userid, username, email, password_hash, firstname, lastname, role FROM recipe.Users WHERE username = '{username_or_email}' OR email = '{username_or_email}'")
         user = cursor.fetchone()
 
         # if user exists
@@ -49,7 +60,7 @@ def authenticate_user(username_or_email: str, password: str) -> User:
             user_id, username, email, hashed_password, firstname, lastname, role = user
             # check password
             if check_password(password, hashed_password):
-                return User(user_id, firstname, lastname, role, username, email, hashed_password)
+                return User(id=user_id, username=username, email=email, firstname=firstname, lastname=lastname, role=role, password_hash=hashed_password)
             else:
                 print("Invalid password!")
                 return None
@@ -58,7 +69,7 @@ def authenticate_user(username_or_email: str, password: str) -> User:
             print("User not found")
             return None
 
-    except Exception as e:
+    except psycopg2.Error as e:
         print(f"An error occurred: {e}")
 
     finally:
