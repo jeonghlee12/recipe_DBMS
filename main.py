@@ -1,5 +1,7 @@
+from database_setup import create_db
+
 def main():
-    pass
-    
+    create_db()
+
 if __name__ == "__main__":
     main()
