@@ -45,8 +45,8 @@ def create_db():
         calory INTEGER,
         creatorID INTEGER NOT NULL,
         lastUpdatorID INTEGER,
-        avgRating DECIMAL,
-        isBeingEdited BOOL DEFAULT FALSE,
+        avgRating DECIMAL CHECK (avgRating >= 0 AND avgRating <= 10),
+        beingEdited  BOOL DEFAULT FALSE,
         createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (creatorID) REFERENCES recipe.Users(userID),
@@ -56,7 +56,7 @@ def create_db():
     CREATE TABLE recipe.Ingredients
     (
         ingredientID SERIAL PRIMARY KEY,
-        ingredientName VARCHAR(50) NOT NULL,
+        ingredientName VARCHAR(50) NOT NULL UNIQUE,
         calory INTEGER
     );
 
@@ -64,7 +64,7 @@ def create_db():
     (
         recipeID INTEGER NOT NULL,
         ingredientID INTEGER NOT NULL,
-        quantity INTEGER,
+        quantity INTEGER NOT NULL,
         PRIMARY KEY (recipeID, ingredientID),
         FOREIGN KEY (recipeID) REFERENCES recipe.Recipes(recipeID),
         FOREIGN KEY (ingredientID) REFERENCES recipe.Ingredients(ingredientID)
@@ -104,6 +104,7 @@ def create_db():
         bookmarkID SERIAL PRIMARY KEY,
         userID INTEGER NOT NULL,
         recipeID INTEGER NOT NULL,
+        UNIQUE (userID, recipeID),
         FOREIGN KEY (userID) REFERENCES recipe.Users(userID),
         FOREIGN KEY (recipeID) REFERENCES recipe.Recipes(recipeID)
     );
@@ -113,7 +114,7 @@ def create_db():
         ratingID SERIAL PRIMARY KEY,
         userID INTEGER NOT NULL,
         recipeID INTEGER NOT NULL,
-        rating INTEGER NOT NULL,
+        rating NUMERIC NOT NULL CHECK (rating >= 0 AND rating <= 10),
         createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (userID) REFERENCES recipe.Users(userID),
         FOREIGN KEY (recipeID) REFERENCES recipe.Recipes(recipeID)
