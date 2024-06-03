@@ -19,36 +19,19 @@ def create_db():
 
 
     # Create schema and table
-    sql ='''CREATE SCHEMA recipe;
+    with open('setup_queries.md', 'r') as file:
+        queries = file.read()
 
-    CREATE TABLE recipe.Users
-    (
-        userID SERIAL PRIMARY KEY,
-        username VARCHAR(50) NOT NULL UNIQUE,
-        email VARCHAR(100) NOT NULL UNIQUE,
-        password_hash VARCHAR(255) NOT NULL,
-        firstname VARCHAR(50),
-        lastname VARCHAR(50),
-        role VARCHAR(20) DEFAULT 'user',
-        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
+    queries = queries.split(';')
+    queries = [q.strip() for q in queries if q.strip()]
 
-    CREATE TABLE recipe.Recipes
-    (
-        recipeID SERIAL PRIMARY KEY,
-        title VARCHAR(100),
-        type VARCHAR(50),
-        description TEXT,
-        instructions TEXT,
-        calory INTEGER,
-        creatorID INTEGER NOT NULL,
-        FOREIGN KEY (creatorID) REFERENCES recipe.users(userID)
-    );
-
-    '''
-    cursor.execute(sql)
-    print("Table created successfully........")
-
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        for query in queries:
+            cursor.execute(query)
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("Database setup completed successfully.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
