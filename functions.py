@@ -8,69 +8,126 @@ db_config = {
     'port': '5432'
 }
 
-def fetch_lowest_calory_recipes():
-    try:
-        conn = psycopg2.connect(**db_config)
-        cursor = conn.cursor()
-        
-        # 각 type별로 calory가 낮은 순으로 1개씩 뽑아오는 쿼리
-        query = """
-        WITH RankedRecipes AS (
-            SELECT
-                recipeID,
-                title,
-                type,
-                description,
-                instructions,
-                calory,
-                creatorID,
-                lastUpdatorID,
-                avgRating,
-                beingEdited,
-                createdAt,
-                updatedAt,
-                ROW_NUMBER() OVER (PARTITION BY type ORDER BY calory ASC) AS rn
-            FROM
-                recipe.Recipes
-        )
+def get_recommendations(user_id):
+    # 데이터베이스에 연결
+    conn = psycopg2.connect(**db_config)
+    cur = conn.cursor()
+
+    # SimilarUsers 뷰를 생성하는 쿼리
+    create_view_query = """
+    CREATE OR REPLACE VIEW recipe.SimilarUsers AS
+    WITH UserRatings AS (
         SELECT
+            userID,
             recipeID,
-            title,
-            type,
-            description,
-            instructions,
-            calory,
-            creatorID,
-            lastUpdatorID,
-            avgRating,
-            beingEdited,
-            createdAt,
-            updatedAt
+            rating
         FROM
-            RankedRecipes
+            recipe.Rating
+    )
+    SELECT
+        ur1.userID AS userID,
+        ur2.userID AS similarUserID,
+        COUNT(*) AS commonRatings,
+        AVG(ABS(ur1.rating - ur2.rating)) AS avgRatingDifference
+    FROM
+        UserRatings ur1
+    JOIN
+        UserRatings ur2
+    ON
+        ur1.recipeID = ur2.recipeID
+        AND ur1.userID != ur2.userID
+    GROUP BY
+        ur1.userID, ur2.userID
+    HAVING
+        COUNT(*) >= 3
+        AND AVG(ABS(ur1.rating - ur2.rating)) < 2;
+    """
+    
+    # 뷰 생성
+    cur.execute(create_view_query)
+    conn.commit()
+
+    # 추천 쿼리
+    recommendation_query = """
+    WITH UserRatings AS (
+        SELECT
+            userID,
+            recipeID,
+            rating
+        FROM
+            recipe.Rating
+    ),
+    UserSimilarUsers AS (
+        SELECT
+            su.similarUserID
+        FROM
+            recipe.SimilarUsers su
         WHERE
-            rn = 1;
-        """
-        cursor.execute(query)
-        
-        results = cursor.fetchall()
-        
-        for row in results:
-            print(f"Recipe ID: {row[0]}")
-            print(f"Title: {row[1]}")
-            print(f"Type: {row[2]}")
-            print(f"Description: {row[3]}")
-            print(f"Instructions: {row[4]}")
-            print(f"Calory: {row[5]}")
-            print(f"Creator ID: {row[6]}")
-            print(f"Last Updator ID: {row[7]}")
-            print(f"Average Rating: {row[8]}")
-            print(f"Is Being Edited: {row[9]}")
-            print(f"Created At: {row[10]}")
-            print(f"Updated At: {row[11]}")
-            print("-" * 40)
-        
-        cursor.close()
-        conn.close()
-    except Exception as e:
-        print(f"An error occurred: {e}")
+            su.userID = """ + str(user_id) + """
+    ),
+    SimilarUserRatings AS (
+        SELECT
+            ru.recipeID,
+            ru.rating,
+            r.type
+        FROM
+            UserSimilarUsers su
+        JOIN
+            UserRatings ru ON su.similarUserID = ru.userID
+        JOIN
+            recipe.Recipes r ON ru.recipeID = r.recipeID
+    ),
+    TopRatedRecipes AS (
+        SELECT
+            sur.recipeID,
+            sur.type,
+            AVG(sur.rating) AS avgRating,
+            COUNT(*) AS ratingCount
+        FROM
+            SimilarUserRatings sur
+        WHERE
+            sur.rating >= 8
+        GROUP BY
+            sur.recipeID, sur.type
+        HAVING
+            COUNT(*) >= 2
+    ),
+    RankedRecipes AS (
+        SELECT
+            tr.type,
+            tr.recipeID,
+            r.title,
+            r.description,
+            r.instructions,
+            tr.avgRating,
+            tr.ratingCount,
+            ROW_NUMBER() OVER (PARTITION BY tr.type ORDER BY tr.avgRating DESC) AS rank
+        FROM
+            TopRatedRecipes tr
+        JOIN
+            recipe.Recipes r ON tr.recipeID = r.recipeID
+    )
+    SELECT
+        type,
+        recipeID,
+        title,
+        description,
+        instructions,
+        avgRating,
+        ratingCount
+    FROM
+        RankedRecipes
+    WHERE
+        rank = 1;
+    """
+    
+    # 추천 쿼리 실행
+    cur.execute(recommendation_query)
+    recommendations = cur.fetchall()
+
+    # 연결 닫기
+    cur.close()
+    conn.close()
+
+    # 추천 결과 반환
+    return recommendations

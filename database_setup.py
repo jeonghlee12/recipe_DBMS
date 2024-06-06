@@ -1,16 +1,16 @@
 import psycopg2
-from transformers import AutoTokenizer, AutoModel
-import torch
+# from transformers import AutoTokenizer, AutoModel
+# import torch
 
 # load sentence to token tokenizer model from transformers package
-tokenizer = AutoTokenizer.from_pretrained('sentence-transformers/all-MiniLM-L12-v2')
-model = AutoModel.from_pretrained('sentence-transformers/all-MiniLM-L12-v2')
+# tokenizer = AutoTokenizer.from_pretrained('sentence-transformers/all-MiniLM-L12-v2')
+# model = AutoModel.from_pretrained('sentence-transformers/all-MiniLM-L12-v2')
 
-def encode_text(text: str) -> list:
-    inputs = tokenizer(text, return_tensors='pt', padding=True, truncation=True)
-    with torch.no_grad():
-        outputs = model(**inputs)
-    return outputs.last_hidden_state.mean(dim=1).numpy().flatten().tolist()
+# def encode_text(text: str) -> list:
+#     inputs = tokenizer(text, return_tensors='pt', padding=True, truncation=True)
+#     with torch.no_grad():
+#         outputs = model(**inputs)
+#     return outputs.last_hidden_state.mean(dim=1).numpy().flatten().tolist()
 
 
 def establish_connection():
