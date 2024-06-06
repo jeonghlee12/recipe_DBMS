@@ -1,4 +1,5 @@
 import psycopg2
+import time
 
 db_config = {
     'database': 'postgres',
@@ -7,6 +8,53 @@ db_config = {
     'host': 'localhost',
     'port': '5432'
 }
+
+def execute_explain_analyze(query, db_config):
+    conn = psycopg2.connect(**db_config)
+    cur = conn.cursor()
+    cur.execute(f"SET enable_seqscan TO OFF; EXPLAIN ANALYZE {query}")
+    result = cur.fetchall()
+    cur.close()
+    conn.close()
+    return result
+
+def execute_query(query, db_config):
+    conn = psycopg2.connect(**db_config)
+    cur = conn.cursor()
+    cur.execute(query)
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def create_index():
+    # 쿼리
+    query = "SELECT AVG(rating) FROM recipe.Rating WHERE recipeID = 1;"
+
+    # 쿼리 실행 전 성능 측정
+    result_before = execute_explain_analyze(query, db_config)
+    print("Execution plan and time before index creation:")
+    print("-" * 50)
+    for row in result_before:
+        print(row[0])
+    print("-" * 50)
+
+    # 인덱스 생성
+    index_query = "CREATE INDEX idx_recipeID ON recipe.Rating(recipeID);"
+    execute_query(index_query, db_config)
+    print("Index created!")
+    print("-" * 50)
+    
+    # 쿼리 실행 후 성능 측정
+    result_after = execute_explain_analyze(query, db_config)
+    print("Execution plan and time after index creation:")
+    print("-" * 50)
+    for row in result_after:
+        print(row[0])
+    print("-" * 50)
+
+    # 인덱스 제거 (옵션)
+    drop_index_query = "DROP INDEX recipe.idx_recipeID; SET enable_seqscan TO ON;"
+    execute_query(drop_index_query, db_config)
 
 def get_recommendations(user_id):
     # 데이터베이스에 연결
