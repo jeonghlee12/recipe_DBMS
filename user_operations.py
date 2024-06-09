@@ -7,7 +7,7 @@ from database_setup import establish_connection
 def check_password(password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
 
-def add_user(firstname: str, lastname: str, email: str, username: str, password: str, role: str = None) -> None:
+def add_user(firstname: str, lastname: str, email: str, username: str, password: str, role: str = None) -> bool:
     ### hash password using bcrypt package
     # create salt
     salt = bcrypt.gensalt()
@@ -21,8 +21,9 @@ def add_user(firstname: str, lastname: str, email: str, username: str, password:
     ### add user to db
     conn = establish_connection()
     if conn is None:
+        print("*" * 70)
         print("No connection to PostgreSQL!")
-        return
+        return False
     
     try:
         cursor = conn.cursor()
@@ -31,22 +32,25 @@ def add_user(firstname: str, lastname: str, email: str, username: str, password:
             cursor.execute(f"INSERT INTO recipe.Users (username, email, password_hash, firstname, lastname, role) VALUES ('{username}', '{email}', '{hashed_password}', '{firstname}', '{lastname}', '{role}')")
         else:
             cursor.execute(f"INSERT INTO recipe.Users (username, email, password_hash, firstname, lastname) VALUES ('{username}', '{email}', '{hashed_password}', '{firstname}', '{lastname}')")
-
+        return True
+        
+    except psycopg2.Error as e:
+        conn.rollback()
+        print("*" * 70)
+        print("An error occurred with PostgreSQL")
+        print(e)
+        return False
+    
+    finally:
         conn.commit()
         cursor.close()
         conn.close()
-    
-    except psycopg2.errors.UniqueViolation as uv:
-        print(f"User {firstname} {lastname} with username '{username}' and email '{email}' already exists!\n")
-
-    except psycopg2.Error as e:
-        print(f"An error occurred: {e}")
 
 def authenticate_user(username_or_email: str, password: str) -> User:
     conn = establish_connection()
     if conn is None:
         print("No connection to PostgreSQL!")
-        return
+        return None
     
     try:
         cursor = conn.cursor()
@@ -70,7 +74,11 @@ def authenticate_user(username_or_email: str, password: str) -> User:
             return None
 
     except psycopg2.Error as e:
-        print(f"An error occurred: {e}")
+        conn.rollback()
+        print("*" * 70)
+        print("An error occurred with PostgreSQL")
+        print(e)
+        return None
 
     finally:
         conn.commit()

@@ -1,181 +1,242 @@
 import psycopg2
-import time
 
-db_config = {
-    'database': 'postgres',
-    'user': 'postgres',
-    'password': 'postgres',
-    'host': 'localhost',
-    'port': '5432'
-}
+from database_setup import establish_connection, encode_text
 
-def execute_explain_analyze(query, db_config):
-    conn = psycopg2.connect(**db_config)
-    cur = conn.cursor()
-    cur.execute(f"SET enable_seqscan TO OFF; EXPLAIN ANALYZE {query}")
-    result = cur.fetchall()
-    cur.close()
-    conn.close()
-    return result
-
-def execute_query(query, db_config):
-    conn = psycopg2.connect(**db_config)
-    cur = conn.cursor()
-    cur.execute(query)
-    conn.commit()
-    cur.close()
-    conn.close()
-
-def create_index():
-    # 쿼리
-    query = "SELECT AVG(rating) FROM recipe.Rating WHERE recipeID = 1;"
-
-    # 쿼리 실행 전 성능 측정
-    result_before = execute_explain_analyze(query, db_config)
-    print("Execution plan and time before index creation:")
-    print("-" * 50)
-    for row in result_before:
-        print(row[0])
-    print("-" * 50)
-
-    # 인덱스 생성
-    index_query = "CREATE INDEX idx_recipeID ON recipe.Rating(recipeID);"
-    execute_query(index_query, db_config)
-    print("Index created!")
-    print("-" * 50)
+def get_recipe(recipe_id: int):
+    conn = establish_connection()
+    if conn is None:
+        print("*" * 70)
+        print("No connection to PostgreSQL!")
+        return None
     
-    # 쿼리 실행 후 성능 측정
-    result_after = execute_explain_analyze(query, db_config)
-    print("Execution plan and time after index creation:")
-    print("-" * 50)
-    for row in result_after:
-        print(row[0])
-    print("-" * 50)
-
-    # 인덱스 제거 (옵션)
-    drop_index_query = "DROP INDEX recipe.idx_recipeID; SET enable_seqscan TO ON;"
-    execute_query(drop_index_query, db_config)
-
-def get_recommendations(user_id):
-    # 데이터베이스에 연결
-    conn = psycopg2.connect(**db_config)
-    cur = conn.cursor()
-
-    # SimilarUsers 뷰를 생성하는 쿼리
-    create_view_query = """
-    CREATE OR REPLACE VIEW recipe.SimilarUsers AS
-    WITH UserRatings AS (
-        SELECT
-            userID,
-            recipeID,
-            rating
-        FROM
-            recipe.Rating
-    )
-    SELECT
-        ur1.userID AS userID,
-        ur2.userID AS similarUserID,
-        COUNT(*) AS commonRatings,
-        AVG(ABS(ur1.rating - ur2.rating)) AS avgRatingDifference
-    FROM
-        UserRatings ur1
-    JOIN
-        UserRatings ur2
-    ON
-        ur1.recipeID = ur2.recipeID
-        AND ur1.userID != ur2.userID
-    GROUP BY
-        ur1.userID, ur2.userID
-    HAVING
-        COUNT(*) >= 3
-        AND AVG(ABS(ur1.rating - ur2.rating)) < 2;
-    """
-    
-    # 뷰 생성
-    cur.execute(create_view_query)
-    conn.commit()
-
-    # 추천 쿼리
-    recommendation_query = """
-    WITH UserRatings AS (
-        SELECT
-            userID,
-            recipeID,
-            rating
-        FROM
-            recipe.Rating
-    ),
-    UserSimilarUsers AS (
-        SELECT
-            su.similarUserID
-        FROM
-            recipe.SimilarUsers su
-        WHERE
-            su.userID = """ + str(user_id) + """
-    ),
-    SimilarUserRatings AS (
-        SELECT
-            ru.recipeID,
-            ru.rating,
-            r.type
-        FROM
-            UserSimilarUsers su
-        JOIN
-            UserRatings ru ON su.similarUserID = ru.userID
-        JOIN
-            recipe.Recipes r ON ru.recipeID = r.recipeID
-    ),
-    TopRatedRecipes AS (
-        SELECT
-            sur.recipeID,
-            sur.type,
-            AVG(sur.rating) AS avgRating,
-            COUNT(*) AS ratingCount
-        FROM
-            SimilarUserRatings sur
-        WHERE
-            sur.rating >= 8
-        GROUP BY
-            sur.recipeID, sur.type
-        HAVING
-            COUNT(*) >= 2
-    ),
-    RankedRecipes AS (
-        SELECT
-            tr.type,
-            tr.recipeID,
+    try:
+        cursor = conn.cursor()
+        query = f"""
+        SELECT 
+            r.recipeID,
             r.title,
+            r.type,
             r.description,
             r.instructions,
-            tr.avgRating,
-            tr.ratingCount,
-            ROW_NUMBER() OVER (PARTITION BY tr.type ORDER BY tr.avgRating DESC) AS rank
-        FROM
-            TopRatedRecipes tr
-        JOIN
-            recipe.Recipes r ON tr.recipeID = r.recipeID
-    )
-    SELECT
-        type,
-        recipeID,
-        title,
-        description,
-        instructions,
-        avgRating,
-        ratingCount
-    FROM
-        RankedRecipes
-    WHERE
-        rank = 1;
-    """
+            r.calory,
+            r.avgRating,
+            r.beingEdited,
+            r.createdAt AS recipeCreatedAt,
+            r.updatedAt AS recipeUpdatedAt,
+            creator.username AS creatorUsername,
+            lastEditor.username AS lastEditorUsername,
+            i.ingredientName,
+            ri.quantity,
+            i.calory AS ingredientCalory
+        FROM 
+            recipe.Recipes r
+        LEFT JOIN 
+            recipe.Users creator ON r.creatorID = creator.userID
+        LEFT JOIN 
+            recipe.Users lastEditor ON r.lastUpdatorID = lastEditor.userID
+        LEFT JOIN 
+            recipe.Recipe_Ingredients ri ON r.recipeID = ri.recipeID
+        LEFT JOIN 
+            recipe.Ingredients i ON ri.ingredientID = i.ingredientID
+        WHERE 
+            r.recipeID = {recipe_id};
+        """
     
-    # 추천 쿼리 실행
-    cur.execute(recommendation_query)
-    recommendations = cur.fetchall()
+        cursor.execute(query)
 
-    # 연결 닫기
-    cur.close()
-    conn.close()
+        results = cursor.fetchall()
+        return results
 
-    # 추천 결과 반환
-    return recommendations
+    except psycopg2.Error as e:
+        conn.rollback()
+        print("*" * 70)
+        print("An error occurred with PostgreSQL")
+        print(e)
+        return None
+    
+    finally:
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+def find_similar_recipes(title: str = None, description: str = None, instructions: str = None,
+                         recipe_type: str = None, min_calory: int = None, max_calory: int = None,
+                         ingredients: list = None, creatorUsername: str = None, num_results: int = 5):
+    # Encode the input title, description, and instructions as vectors if provided
+    title_vector = encode_text(title) if title else None
+    description_vector = encode_text(description) if description else None
+    instructions_vector = encode_text(instructions) if instructions else None
+
+    conn = establish_connection()
+    if conn is None:
+        print("*" * 70)
+        print("No connection to PostgreSQL!")
+        return None
+    
+    try:
+        cursor = conn.cursor()
+
+        # Base query to find similar recipes
+        query_sql = "SELECT DISTINCT r.recipeID, r.title, r.description, r.instructions, r.type, r.calory, r.avgRating"
+        
+        params = []
+        
+        if title_vector:
+            query_sql += ", 1 - (r.title_vector <=> %s::vector(384)) AS title_similarity"
+            params.append(title_vector)
+        else:
+            query_sql += ", NULL AS title_similarity"
+        
+        if description_vector:
+            query_sql += ", 1 - (r.description_vector <=> %s::vector(384)) AS description_similarity"
+            params.append(description_vector)
+        else:
+            query_sql += ", NULL AS description_similarity"
+        
+        if instructions_vector:
+            query_sql += ", 1 - (r.instructions_vector <=> %s::vector(384)) AS instructions_similarity"
+            params.append(instructions_vector)
+        else:
+            query_sql += ", NULL AS instructions_similarity"
+        
+        # Calculate overall similarity based on provided vectors
+        similarities = []
+        if title_vector:
+            similarities.append("1 - (r.title_vector <=> %s::vector(384))")
+            params.append(title_vector)
+        if description_vector:
+            similarities.append("1 - (r.description_vector <=> %s::vector(384))")
+            params.append(description_vector)
+        if instructions_vector:
+            similarities.append("1 - (r.instructions_vector <=> %s::vector(384))")
+            params.append(instructions_vector)
+        
+        if similarities:
+            overall_similarity = " + ".join(similarities) + f") / {len(similarities)} AS overall_similarity"
+            query_sql += ", (" + overall_similarity
+        else:
+            query_sql += ", NULL AS overall_similarity"
+        
+        query_sql += """
+        FROM recipe.Recipes r
+        LEFT JOIN recipe.Recipe_Ingredients ri ON r.recipeID = ri.recipeID
+        LEFT JOIN recipe.Ingredients i ON ri.ingredientID = i.ingredientID
+        LEFT JOIN recipe.Users u_creator ON r.creatorID = u_creator.userID
+        WHERE TRUE
+        """
+        
+        filters = []
+                    
+        if recipe_type:
+            query_sql += " AND r.type = %s"
+            filters.append(recipe_type)
+        
+        if min_calory is not None:
+            query_sql += " AND r.calory >= %s"
+            filters.append(min_calory)
+        
+        if max_calory is not None:
+            query_sql += " AND r.calory <= %s"
+            filters.append(max_calory)
+        
+        if ingredients:
+            ingredient_conditions = []
+            for ingredient in ingredients:
+                ingredient_conditions.append("i.ingredientName = %s")
+                filters.append(ingredient)
+            query_sql += " AND (" + " OR ".join(ingredient_conditions) + ")"
+        
+        if creatorUsername:
+            query_sql += " AND u_creator.username = %s"
+            filters.append(creatorUsername)
+        
+        query_sql += " ORDER BY overall_similarity DESC NULLS LAST LIMIT %s"
+        filters.append(num_results)
+        
+        params.extend(filters)
+        
+        cursor.execute(query_sql, params)
+        results = cursor.fetchall()
+        return results
+    
+    except psycopg2.Error as e:
+        conn.rollback()
+        print("*" * 70)
+        print("An error occurred with PostgreSQL")
+        print(e)
+        return None
+    
+    finally:
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+def get_materialized_view(num: int = 5):
+    conn = establish_connection()
+    if conn is None:
+        print("*" * 70)
+        print("No connection to PostgreSQL!")
+        return None
+    
+    try:
+        cursor = conn.cursor()
+        query = "SELECT title, recipeid, type, description, instructions, calory, avgrating FROM recipe.TopRatedRecipes LIMIT " + str(num)
+        cursor.execute(query)
+        results = cursor.fetchall()
+        return results
+
+    except psycopg2.Error as e:
+        conn.rollback()        
+        print("*" * 70)
+        print("An error occurred with PostgreSQL")
+        print(e)
+        return None
+    
+    finally:
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+def get_partitioned_view():
+    conn = establish_connection()
+    if conn is None:
+        print("*" * 70)
+        print("No connection to PostgreSQL!")
+        return None
+    
+    try:
+        cursor = conn.cursor()
+        
+        query = """
+            SELECT *
+            FROM (
+                SELECT
+                    recipeID,
+                    title,
+                    type,
+                    description,
+                    instructions,
+                    calory,
+                    avgRating,
+                    ROW_NUMBER() OVER (PARTITION BY type ORDER BY avgRating DESC NULLS LAST) AS rank
+                FROM recipe.Recipes
+            ) ranked_recipes
+            WHERE rank = 1;
+        """
+
+        cursor.execute(query)
+        results = cursor.fetchall()
+        return results
+
+    except psycopg2.Error as e:
+        conn.rollback()        
+        print("*" * 70)
+        print("An error occurred with PostgreSQL")
+        print(e)
+        return None
+    
+    finally:
+        conn.commit()
+        cursor.close()
+        conn.close()
+
