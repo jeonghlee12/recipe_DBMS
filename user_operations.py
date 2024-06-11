@@ -4,9 +4,11 @@ from user import User
 
 from database_setup import establish_connection
 
+# check password is correct via hash
 def check_password(password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
 
+# add user to database
 def add_user(firstname: str, lastname: str, email: str, username: str, password: str, role: str = None) -> bool:
     ### hash password using bcrypt package
     # create salt
@@ -46,6 +48,8 @@ def add_user(firstname: str, lastname: str, email: str, username: str, password:
         cursor.close()
         conn.close()
 
+
+# Check user has inputed correct authentication information (id, password)
 def authenticate_user(username_or_email: str, password: str) -> User:
     conn = establish_connection()
     if conn is None:

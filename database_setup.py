@@ -7,12 +7,14 @@ import bcrypt
 tokenizer = AutoTokenizer.from_pretrained('sentence-transformers/all-MiniLM-L12-v2')
 model = AutoModel.from_pretrained('sentence-transformers/all-MiniLM-L12-v2')
 
+# Embedds text for vectorDB
 def encode_text(text: str) -> list:
     inputs = tokenizer(text, return_tensors='pt', padding=True, truncation=True)
     with torch.no_grad():
         outputs = model(**inputs)
     return outputs.last_hidden_state.mean(dim=1).numpy().flatten().tolist()
 
+# Returns connection to PostgreSQL
 def establish_connection():
     try:
         conn = psycopg2.connect(
@@ -28,7 +30,7 @@ def establish_connection():
         print(f"Error establishing connection to database: {e}")
         return None
 
-
+# Creates schema, tables, views, materialized views, functions for triggers, triggers, and indices
 def create_db() -> None:
     conn = establish_connection()
 
@@ -271,6 +273,7 @@ def create_db() -> None:
     conn.commit()
     conn.close()
 
+# Fill in sample data
 def initialize_db():
     # Fill tables
     names_list = [
@@ -325,6 +328,7 @@ def initialize_db():
 
         salt = bcrypt.gensalt()
 
+        # Insert users
         insert_user_sql = "INSERT INTO recipe.Users (username, email, password_hash, firstname, lastname, role) VALUES "       
         for username, email, password, first, last, role in names_list:
             # hash the password
@@ -337,6 +341,7 @@ def initialize_db():
             
         cursor.execute(insert_user_sql[:-2] + ";")
 
+        # Insert recipes: separate because of vectorization
         insert_recipe_sql = "INSERT INTO recipe.Recipes (title, title_vector, type, description, instructions, description_vector, instructions_vector, calory, creatorID, lastUpdatorID) VALUES "
         for title, recipeType, description, instruction, calorie, user_id in recipe_list:
             title_vector = encode_text(title)
@@ -346,6 +351,7 @@ def initialize_db():
             insert_recipe_sql += f"('{title}', '{title_vector}', '{recipeType}', '{description}', '{instruction}', '{description_vector}', '{instruction_vector}', '{calorie}', '{user_id}', '{user_id}'), "
         cursor.execute(insert_recipe_sql[:-2] + ";")
         
+        # Insert rest of sample data
         for query in db_setup:
             cursor.execute(query)
 

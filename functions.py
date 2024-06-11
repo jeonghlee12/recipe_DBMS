@@ -2,6 +2,7 @@ import psycopg2
 
 from database_setup import establish_connection, encode_text
 
+# return recipes information given recipe_id
 def get_recipe(recipe_id: int):
     conn = establish_connection()
     if conn is None:
@@ -59,6 +60,7 @@ def get_recipe(recipe_id: int):
         cursor.close()
         conn.close()
 
+# Implements hybrid search for recipe search in scenario 2
 def find_similar_recipes(title: str = None, description: str = None, instructions: str = None,
                          recipe_type: str = None, min_calory: int = None, max_calory: int = None,
                          ingredients: list = None, creatorUsername: str = None, num_results: int = 5):
@@ -171,6 +173,7 @@ def find_similar_recipes(title: str = None, description: str = None, instruction
         cursor.close()
         conn.close()
 
+# Gets materialized view of highest average rated recipes for scenario 3
 def get_materialized_view(num: int = 5):
     conn = establish_connection()
     if conn is None:

@@ -4,6 +4,9 @@ from user import User
 from user_operations import add_user, authenticate_user
 from functions import find_similar_recipes, get_materialized_view, get_recipe, get_partitioned_view
 
+########################
+# Main user scenario interface functions
+#########################
 
 ## Scenario 0: create account
 def create_account() -> None:

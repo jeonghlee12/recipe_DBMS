@@ -58,6 +58,7 @@ def main():
         print("Recipe Database Management System")
         print("*" * 70)
 
+        # run scenarios based on user input
         user_num = int(user_input)
         if user_num == 0:
             scenarios.create_account()

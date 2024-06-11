@@ -17,6 +17,7 @@ class User:
         self.role = role
         self.hashed_password = password_hash
 
+    # Gets frequent itemset recommendations for scenario 5
     def get_recommendations(self):
         # 데이터베이스에 연결
         conn = establish_connection()
@@ -27,7 +28,7 @@ class User:
         try:
             cur = conn.cursor()
 
-            # 유저가 찜한 및 레이팅 준 레시피들
+            # 유저가 찜한 및 레이팅 준 레시피들 (UserInteractions이란 view 사용)
             user_recipes_query = f"""SELECT recipeID
             FROM recipe.UserInteractions
             WHERE userID = {self.ID};
@@ -75,6 +76,7 @@ class User:
             cur.close()
             conn.close()
     
+    # creates bookmark on a recipe
     def create_bookmark(self, recipe_id) -> bool:
         conn = establish_connection()
         if conn is None:
@@ -104,7 +106,8 @@ class User:
             conn.commit()
             cursor.close()
             conn.close()
-        
+    
+    # add or updates rating
     def add_or_update_rating(self, recipe_id, rating):
         conn = establish_connection()
         if conn is None:
@@ -136,6 +139,7 @@ class User:
             cursor.close()
             conn.close()
     
+    # Sends edit request for recipe for scenario 6
     def edit_recipe(self, recipe_title, new_description=None, new_instructions=None, ingredients=None) -> int:
         conn = establish_connection()
         if conn is None:
@@ -219,6 +223,7 @@ class User:
             cur.close()
             conn.close()
 
+    # Gets the recipe edit queue for scenario 7
     def retrieve_edit_queue(self):
         conn = establish_connection()
         if conn is None:
@@ -261,7 +266,8 @@ class User:
             conn.commit()
             cur.close()
             conn.close()
-        
+
+    # Gets sends back approval/disapproval for recipe edit request for scenario 7
     def approve_edit_request(self, edit_id: int, approve: bool = True):
         conn = establish_connection()
         if conn is None:
@@ -348,6 +354,7 @@ class User:
             cursor.close()
             conn.close()
     
+    # Gets profile for scenario 8
     def get_profile(self):
         conn = establish_connection()
         if conn is None:
@@ -393,6 +400,7 @@ class User:
             cursor.close()
             conn.close()
 
+    # Gets bookmark in profile for scenario 8
     def get_bookmarks(self):
         conn = establish_connection()
         if conn is None:
@@ -436,6 +444,7 @@ class User:
             cursor.close()
             conn.close()
 
+    # Gets ratings in profile page for scenario 8
     def get_ratings(self):
         conn = establish_connection()
         if conn is None:
@@ -481,6 +490,7 @@ class User:
             cursor.close()
             conn.close()
 
+    # User profile modification for scenario 9: username
     def modify_username(self, new_username: str, password: str) -> bool:
         if self.authenticate(password):
             conn = establish_connection()
@@ -519,6 +529,7 @@ class User:
                 cursor.close()
                 conn.close()
     
+    # User profile modification for scenario 9: email
     def modify_email(self, new_email: str, password: str) -> bool:
         if self.authenticate(password):
             conn = establish_connection()
@@ -554,6 +565,7 @@ class User:
                 cursor.close()
                 conn.close()
 
+    # User profile modification for scenario 9: password
     def modify_password(self, new_password: str, password: str) -> None:
         if self.authenticate(password):
             conn = establish_connection()
@@ -587,5 +599,6 @@ class User:
                 cursor.close()
                 conn.close()
     
+    # Function to authenticate password hash
     def authenticate(self, password: str) -> bool:
         return bcrypt.checkpw(password.encode('utf-8'), self.hashed_password.encode('utf-8'))
