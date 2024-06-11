@@ -290,7 +290,7 @@ class User:
                 # Update the Recipes table
                 update_recipe_query = """
                 UPDATE recipe.Recipes
-                SET description = %s, instructions = %s, updatedAt = CURRENT_TIMESTAMP
+                SET description = %s, instructions = %s, updatedAt = CURRENT_TIMESTAMP, beingEdited = false
                 WHERE recipeID = %s;
                 """
                 cursor.execute(update_recipe_query, (request[4], request[6], recipe_id))
